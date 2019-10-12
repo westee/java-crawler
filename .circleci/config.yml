@@ -4,13 +4,11 @@ jobs:
   test:
     docker:
       - image: circleci/openjdk:8u212-jdk-stretch
+#        运行环境
     steps:
       - checkout
       - restore_cache:
           key: hcsp-{{ checksum "pom.xml" }}
-      - run:
-          name: Verify whitelist
-          command: ./.circleci/verifyWhitelist.sh
       - run:
           name: Run Maven tests
           command: mvn clean test
