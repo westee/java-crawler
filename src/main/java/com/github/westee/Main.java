@@ -11,17 +11,25 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 
 import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class Main {
-    public static void main(String[] args) throws IOException {
-//        待处理链接池
-        ArrayList<String> linkPool = new ArrayList<>();
-//        已处理链接池
-        Set<String> processedLinks = new HashSet();
-        linkPool.add("https://sina.cn");
+    public static void main(String[] args) throws IOException, SQLException {
+        Connection connection = DriverManager.getConnection("jdbc:h2:file:F:/read-write-files/news");
+
+        //  待处理链接池        // 从数据库加载要处理的链接
+        List<String> linkPool = loadUrlsFromDatabase(connection, "select link false links_bo_be_processed");
+
+        //  已处理链接池
+        Set<String> processedLinks = new HashSet(loadUrlsFromDatabase(connection, "select link false links_already_processed"));
 
         while (true) {
             if (linkPool.isEmpty()) {
@@ -59,6 +67,18 @@ public class Main {
         }
 
 
+    }
+
+    private static List<String> loadUrlsFromDatabase(Connection connection, String sql) throws SQLException {
+        List<String> results = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            ResultSet resultSet = statement.executeQuery();
+            while (resultSet.next()) {
+                results.add(resultSet.getString(1));
+            }
+        }
+
+        return results;
     }
 
     private static void storeIntoDBIfItNewsPage(Document document) {
