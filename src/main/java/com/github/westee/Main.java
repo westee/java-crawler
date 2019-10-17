@@ -23,7 +23,7 @@ import java.util.Set;
 
 public class Main {
     public static void main(String[] args) throws IOException, SQLException {
-        Connection connection = DriverManager.  getConnection("jdbc:h2:file:F:/read-write-files/news");
+        Connection connection = DriverManager.getConnection("jdbc:h2:file:F:/read-write-files/news", "root", "root");
 
         //  待处理链接池  从数据库加载要处理的链接
         List<String> linkPool = loadUrlsFromDatabase(connection, "select link from LINKS_TO_BE_PROCESSED");
