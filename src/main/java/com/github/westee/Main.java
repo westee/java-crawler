@@ -23,49 +23,53 @@ import java.util.Set;
 
 public class Main {
     public static void main(String[] args) throws IOException, SQLException {
-        Connection connection = DriverManager.getConnection("jdbc:h2:file:F:/read-write-files/news");
+        Connection connection = DriverManager.  getConnection("jdbc:h2:file:F:/read-write-files/news");
 
-        //  待处理链接池        // 从数据库加载要处理的链接
-        List<String> linkPool = loadUrlsFromDatabase(connection, "select link false links_bo_be_processed");
+        //  待处理链接池  从数据库加载要处理的链接
+        List<String> linkPool = loadUrlsFromDatabase(connection, "select link from LINKS_TO_BE_PROCESSED");
 
         //  已处理链接池
-        Set<String> processedLinks = new HashSet(loadUrlsFromDatabase(connection, "select link false links_already_processed"));
+        Set<String> processedLinks = new HashSet(loadUrlsFromDatabase(connection, "select link from LINKS_ALREADY_PROCESSED"));
 
-        while (true) {
-            if (linkPool.isEmpty()) {
-                break;
-            }
+        try {
 
-            String link = linkPool.remove(linkPool.size() - 1);
-
-            if (processedLinks.contains(link)) {
-                continue;
-            }
-
-            if (isInterestingLink(link)) {
-                // 感兴趣的新闻
-
-                if (link.startsWith("//")) {
-                    link = "https:" + link;
+            while (true) {
+                if (linkPool.isEmpty()) {
+                    break;
                 }
 
+                String link = linkPool.remove(linkPool.size() - 1);
 
-                Document document = httpGetAndParseHtml(link);
+                if (processedLinks.contains(link)) {
+                    continue;
+                }
+
+                if (isInterestingLink(link)) {
+                    // 感兴趣的新闻
+
+                    if (link.startsWith("//")) {
+                        link = "https:" + link;
+                    }
+
+
+                    Document document = httpGetAndParseHtml(link);
 //                    获得当前页面所有a标签
-                ArrayList<Element> aTags = document.select("a");
+                    ArrayList<Element> aTags = document.select("a");
 
-                aTags.stream().map(aTag -> aTag.attr("href")).forEach(linkPool::add);
+                    aTags.stream().map(aTag -> aTag.attr("href")).forEach(linkPool::add);
 
-                // 判断是否是新闻页面
-                storeIntoDBIfItNewsPage(document);
-                processedLinks.add(link);
+                    // 判断是否是新闻页面
+                    storeIntoDBIfItNewsPage(document);
+                    processedLinks.add(link);
 
-            } else {
-                continue;
+                } else {
+                    continue;
+                }
+
             }
-
+        } finally {
+            System.out.println("结束");
         }
-
 
     }
 
