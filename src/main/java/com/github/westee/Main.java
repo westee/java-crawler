@@ -23,52 +23,74 @@ import java.util.Set;
 
 public class Main {
     public static void main(String[] args) throws IOException, SQLException {
+        System.out.println("开始");
         Connection connection = DriverManager.getConnection("jdbc:h2:file:F:/read-write-files/news", "root", "root");
 
-        //  待处理链接池  从数据库加载要处理的链接
-        List<String> linkPool = loadUrlsFromDatabase(connection, "select link from LINKS_TO_BE_PROCESSED");
+        while (true) {
+            //  待处理链接池  从数据库加载要处理的链接
+            List<String> linkPool = loadUrlsFromDatabase(connection, "select link from LINKS_TO_BE_PROCESSED");
 
-        //  已处理链接池
-        Set<String> processedLinks = new HashSet(loadUrlsFromDatabase(connection, "select link from LINKS_ALREADY_PROCESSED"));
+            //  已处理链接池
+//            Set<String> processedLinks = new HashSet(loadUrlsFromDatabase(connection, "select link from LINKS_ALREADY_PROCESSED"));
+            if (linkPool.isEmpty()) {
+                break;
+            }
+            System.out.println("没有break");
+            String link = linkPool.remove(linkPool.size() - 1);
 
-        try {
+            // 写一个从数据库删除数据的方法
+            try (PreparedStatement statement = connection.prepareStatement("delete from LINKS_TO_BE_PROCESSED where link = ?")) {
+                statement.setString(1, link);
+                statement.executeUpdate();
+            }
 
-            while (true) {
-                if (linkPool.isEmpty()) {
-                    break;
+            // 查看数据看，当前连接是否处理过
+            boolean flag = false;
+            try ( PreparedStatement statement = connection.prepareStatement("select LINK from LINKS_ALREADY_PROCESSED where LINK = ?")){
+                statement.setString(1, link );
+                ResultSet resultSet = statement.executeQuery();
+                while (resultSet.next()){
+                    flag = true;
+                }
+            }
+
+            if (flag) {
+                continue;
+            }
+
+            // 感兴趣的新闻
+            if (isInterestingLink(link)) {
+
+                if (link.startsWith("//")) {
+                    link = "https:" + link;
                 }
 
-                String link = linkPool.remove(linkPool.size() - 1);
 
-                if (processedLinks.contains(link)) {
-                    continue;
-                }
+                Document document = httpGetAndParseHtml(link);
+//                    获得当前页面所有a标签
+                ArrayList<Element> aTags = document.select("a");
 
-                if (isInterestingLink(link)) {
-                    // 感兴趣的新闻
-
-                    if (link.startsWith("//")) {
-                        link = "https:" + link;
+                for (Element aTag : aTags) {
+                    String href = aTag.attr("href");
+                    linkPool.add(href);
+                    try(PreparedStatement statement = connection.prepareStatement("insert into LINKS_TO_BE_PROCESSED (link) values (?)")){
+                        statement.setString(1, href);
+                        statement.executeUpdate();
                     }
 
-
-                    Document document = httpGetAndParseHtml(link);
-//                    获得当前页面所有a标签
-                    ArrayList<Element> aTags = document.select("a");
-
-                    aTags.stream().map(aTag -> aTag.attr("href")).forEach(linkPool::add);
-
-                    // 判断是否是新闻页面
-                    storeIntoDBIfItNewsPage(document);
-                    processedLinks.add(link);
-
-                } else {
-                    continue;
                 }
 
+                // 判断是否是新闻页面
+                storeIntoDBIfItNewsPage(document);
+                try (PreparedStatement statement = connection.prepareStatement("insert into LINKS_ALREADY_PROCESSED (LINK) values (?)")) {
+                    statement.setString(1, link);
+                    statement.executeUpdate();
+                }
+
+            } else {
+                continue;
             }
-        } finally {
-            System.out.println("结束");
+
         }
 
     }
