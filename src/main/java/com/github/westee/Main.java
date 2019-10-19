@@ -17,13 +17,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.HashSet;
+
 import java.util.List;
-import java.util.Set;
 
 public class Main {
     public static void main(String[] args) throws IOException, SQLException {
-        System.out.println("开始");
         Connection connection = DriverManager.getConnection("jdbc:h2:file:F:/read-write-files/news", "root", "root");
 
         while (true) {
@@ -31,30 +29,14 @@ public class Main {
             List<String> linkPool = loadUrlsFromDatabase(connection, "select link from LINKS_TO_BE_PROCESSED");
 
             //  已处理链接池
-//            Set<String> processedLinks = new HashSet(loadUrlsFromDatabase(connection, "select link from LINKS_ALREADY_PROCESSED"));
             if (linkPool.isEmpty()) {
                 break;
             }
-            System.out.println("没有break");
             String link = linkPool.remove(linkPool.size() - 1);
 
             // 写一个从数据库删除数据的方法
-            try (PreparedStatement statement = connection.prepareStatement("delete from LINKS_TO_BE_PROCESSED where link = ?")) {
-                statement.setString(1, link);
-                statement.executeUpdate();
-            }
-
-            // 查看数据看，当前连接是否处理过
-            boolean flag = false;
-            try ( PreparedStatement statement = connection.prepareStatement("select LINK from LINKS_ALREADY_PROCESSED where LINK = ?")){
-                statement.setString(1, link );
-                ResultSet resultSet = statement.executeQuery();
-                while (resultSet.next()){
-                    flag = true;
-                }
-            }
-
-            if (flag) {
+            insertLinkIntoDataBase(connection, link, "delete from LINKS_TO_BE_PROCESSED where link = ?");
+            if (isLinkProcessed(connection, link)) {
                 continue;
             }
 
@@ -65,27 +47,15 @@ public class Main {
                     link = "https:" + link;
                 }
 
-
                 Document document = httpGetAndParseHtml(link);
-//                    获得当前页面所有a标签
+                //  获得当前页面所有a标签
                 ArrayList<Element> aTags = document.select("a");
 
-                for (Element aTag : aTags) {
-                    String href = aTag.attr("href");
-                    linkPool.add(href);
-                    try(PreparedStatement statement = connection.prepareStatement("insert into LINKS_TO_BE_PROCESSED (link) values (?)")){
-                        statement.setString(1, href);
-                        statement.executeUpdate();
-                    }
-
-                }
+                parseUrlsFromPageAndInsertIntoDatabase(connection, aTags);
 
                 // 判断是否是新闻页面
                 storeIntoDBIfItNewsPage(document);
-                try (PreparedStatement statement = connection.prepareStatement("insert into LINKS_ALREADY_PROCESSED (LINK) values (?)")) {
-                    statement.setString(1, link);
-                    statement.executeUpdate();
-                }
+                insertLinkIntoDataBase(connection, link, "insert into LINKS_ALREADY_PROCESSED (LINK) values (?)");
 
             } else {
                 continue;
@@ -93,6 +63,32 @@ public class Main {
 
         }
 
+    }
+
+    private static void parseUrlsFromPageAndInsertIntoDatabase(Connection connection, ArrayList<Element> aTags) throws SQLException {
+        for (Element aTag : aTags) {
+            String href = aTag.attr("href");
+            insertLinkIntoDataBase(connection, href, "insert into LINKS_TO_BE_PROCESSED (link) values (?)");
+        }
+    }
+
+    private static boolean isLinkProcessed(Connection connection, String link) throws SQLException {
+        // 查看数据看，当前连接是否处理过
+        try ( PreparedStatement statement = connection.prepareStatement("select LINK from LINKS_ALREADY_PROCESSED where LINK = ?")){
+            statement.setString(1, link );
+            ResultSet resultSet = statement.executeQuery();
+            while (resultSet.next()){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void insertLinkIntoDataBase(Connection connection, String href, String s) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(s)) {
+            statement.setString(1, href);
+            statement.executeUpdate();
+        }
     }
 
     private static List<String> loadUrlsFromDatabase(Connection connection, String sql) throws SQLException {
