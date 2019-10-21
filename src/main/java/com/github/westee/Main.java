@@ -23,29 +23,14 @@ import java.util.List;
 public class Main {
     public static void main(String[] args) throws IOException, SQLException {
         Connection connection = DriverManager.getConnection("jdbc:h2:file:F:/read-write-files/news", "root", "root");
-
-        while (true) {
-            //  待处理链接池  从数据库加载要处理的链接
-            List<String> linkPool = loadUrlsFromDatabase(connection, "select link from LINKS_TO_BE_PROCESSED");
-
-            //  已处理链接池
-            if (linkPool.isEmpty()) {
-                break;
-            }
-            String link = linkPool.remove(linkPool.size() - 1);
-
-            // 写一个从数据库删除数据的方法
-            insertLinkIntoDataBase(connection, link, "delete from LINKS_TO_BE_PROCESSED where link = ?");
+        String link = null;
+        while ((link = getNextLinkThenDelete(connection)) != null) {
             if (isLinkProcessed(connection, link)) {
                 continue;
             }
 
             // 感兴趣的新闻
             if (isInterestingLink(link)) {
-
-                if (link.startsWith("//")) {
-                    link = "https:" + link;
-                }
 
                 Document document = httpGetAndParseHtml(link);
                 //  获得当前页面所有a标签
@@ -55,7 +40,7 @@ public class Main {
 
                 // 判断是否是新闻页面
                 storeIntoDBIfItNewsPage(document);
-                insertLinkIntoDataBase(connection, link, "insert into LINKS_ALREADY_PROCESSED (LINK) values (?)");
+                updateDatabase(connection, link, "insert into LINKS_ALREADY_PROCESSED (LINK) values (?)");
 
             } else {
                 continue;
@@ -65,10 +50,18 @@ public class Main {
 
     }
 
+    private static String getNextLinkThenDelete(Connection connection) throws SQLException {
+        String link =   getNextLink(connection,"select link from LINKS_TO_BE_PROCESSED limit 1");
+        if(link != null){
+            updateDatabase(connection, link, "delete from LINKS_TO_BE_PROCESSED where link = ?");
+        }
+        return link;
+    }
+
     private static void parseUrlsFromPageAndInsertIntoDatabase(Connection connection, ArrayList<Element> aTags) throws SQLException {
         for (Element aTag : aTags) {
             String href = aTag.attr("href");
-            insertLinkIntoDataBase(connection, href, "insert into LINKS_TO_BE_PROCESSED (link) values (?)");
+            updateDatabase(connection, href, "insert into LINKS_TO_BE_PROCESSED (link) values (?)");
         }
     }
 
@@ -84,23 +77,27 @@ public class Main {
         return false;
     }
 
-    private static void insertLinkIntoDataBase(Connection connection, String href, String s) throws SQLException {
+    private static void updateDatabase(Connection connection, String href, String s) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(s)) {
             statement.setString(1, href);
             statement.executeUpdate();
         }
     }
 
-    private static List<String> loadUrlsFromDatabase(Connection connection, String sql) throws SQLException {
-        List<String> results = new ArrayList<>();
+    private static String getNextLink(Connection connection, String sql) throws SQLException {
+        ResultSet resultSet = null;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            ResultSet resultSet = statement.executeQuery();
+            resultSet = statement.executeQuery();
             while (resultSet.next()) {
-                results.add(resultSet.getString(1));
+                return resultSet.getString(1);
+            }
+        } finally {
+            if(resultSet != null){
+                resultSet.close();
             }
         }
 
-        return results;
+        return null;
     }
 
     private static void storeIntoDBIfItNewsPage(Document document) {
@@ -113,6 +110,10 @@ public class Main {
     }
 
     private static Document httpGetAndParseHtml(String link) throws IOException {
+        if (link.startsWith("//")) {
+            link = "https:" + link;
+        }
+
         CloseableHttpClient httpclient = HttpClients.createDefault();
         HttpGet httpGet = new HttpGet(link);
         httpGet.addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Mobile Safari/537.36");
