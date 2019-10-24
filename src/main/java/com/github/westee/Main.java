@@ -17,8 +17,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
-
-import java.util.List;
+import java.util.stream.Collectors;
 
 public class Main {
     public static void main(String[] args) throws IOException, SQLException {
@@ -39,7 +38,7 @@ public class Main {
                 parseUrlsFromPageAndInsertIntoDatabase(connection, aTags);
 
                 // 判断是否是新闻页面
-                storeIntoDBIfItNewsPage(document);
+                storeIntoDBIfItNewsPage(connection, document, link);
                 updateDatabase(connection, link, "insert into LINKS_ALREADY_PROCESSED (LINK) values (?)");
 
             } else {
@@ -51,8 +50,8 @@ public class Main {
     }
 
     private static String getNextLinkThenDelete(Connection connection) throws SQLException {
-        String link =   getNextLink(connection,"select link from LINKS_TO_BE_PROCESSED limit 1");
-        if(link != null){
+        String link = getNextLink(connection, "select link from LINKS_TO_BE_PROCESSED limit 1");
+        if (link != null) {
             updateDatabase(connection, link, "delete from LINKS_TO_BE_PROCESSED where link = ?");
         }
         return link;
@@ -61,16 +60,26 @@ public class Main {
     private static void parseUrlsFromPageAndInsertIntoDatabase(Connection connection, ArrayList<Element> aTags) throws SQLException {
         for (Element aTag : aTags) {
             String href = aTag.attr("href");
-            updateDatabase(connection, href, "insert into LINKS_TO_BE_PROCESSED (link) values (?)");
+
+            if (href.startsWith("//")) {
+                href = "https:" + href;
+            }
+            System.out.println(href);
+
+            if (!href.toLowerCase().startsWith("javascript")) {
+                updateDatabase(connection, href, "insert into LINKS_TO_BE_PROCESSED (link) values (?)");
+
+            }
+
         }
     }
 
     private static boolean isLinkProcessed(Connection connection, String link) throws SQLException {
         // 查看数据看，当前连接是否处理过
-        try ( PreparedStatement statement = connection.prepareStatement("select LINK from LINKS_ALREADY_PROCESSED where LINK = ?")){
-            statement.setString(1, link );
+        try (PreparedStatement statement = connection.prepareStatement("select LINK from LINKS_ALREADY_PROCESSED where LINK = ?")) {
+            statement.setString(1, link);
             ResultSet resultSet = statement.executeQuery();
-            while (resultSet.next()){
+            while (resultSet.next()) {
                 return true;
             }
         }
@@ -92,7 +101,7 @@ public class Main {
                 return resultSet.getString(1);
             }
         } finally {
-            if(resultSet != null){
+            if (resultSet != null) {
                 resultSet.close();
             }
         }
@@ -100,20 +109,25 @@ public class Main {
         return null;
     }
 
-    private static void storeIntoDBIfItNewsPage(Document document) {
-        ArrayList<Element> titles = document.select("article");
-        if (!titles.isEmpty()) {
-            for (Element title : titles) {
-                System.out.println(title.select("h1").text());
+    private static void storeIntoDBIfItNewsPage(Connection connection, Document document, String link) throws SQLException {
+        ArrayList<Element> articleTags = document.select("article");
+        if (!articleTags.isEmpty()) {
+            for (Element article : articleTags) {
+//                System.out.println(article.select("h1").text());
+                String title = article.select("h1").text();
+                String content = article.select("p").stream().map(Element::text).collect(Collectors.joining("\n"));
+
+                try (PreparedStatement statement = connection.prepareStatement("insert into NEWS (TITLE, CONTENT, URL, CREATED_AT, MODIFIED_AT) values ( ?,?,?,now(), now()) ")) {
+                    statement.setString(1, title);
+                    statement.setString(2, content);
+                    statement.setString(3, link);
+                    statement.executeUpdate();
+                }
             }
         }
     }
 
     private static Document httpGetAndParseHtml(String link) throws IOException {
-        if (link.startsWith("//")) {
-            link = "https:" + link;
-        }
-
         CloseableHttpClient httpclient = HttpClients.createDefault();
         HttpGet httpGet = new HttpGet(link);
         httpGet.addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Mobile Safari/537.36");
