@@ -12,10 +12,7 @@ import org.jsoup.nodes.Element;
 
 import java.io.IOException;
 import java.sql.Connection;
-import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.stream.Collectors;
@@ -49,10 +46,9 @@ public class Crawler {
         }
     }
 
-    public void main(String[] args) throws IOException, SQLException {
+    public static void main(String[] args) throws IOException, SQLException {
         new Crawler().run();
     }
-
 
     private void parseUrlsFromPageAndInsertIntoDatabase(ArrayList<Element> aTags) throws SQLException {
         for (Element aTag : aTags) {

@@ -15,10 +15,9 @@ public class DataAccessObject implements CrawlerDao {
         } catch (SQLException e) {
             throw new RuntimeException(e); // 有道道
         }
-        ;
     }
 
-    public String getNextLink(String sql) throws SQLException {
+    private String getNextLink(String sql) throws SQLException {
         ResultSet resultSet = null;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             resultSet = statement.executeQuery();
