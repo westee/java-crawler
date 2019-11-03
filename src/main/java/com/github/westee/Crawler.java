@@ -11,19 +11,17 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.stream.Collectors;
 
 public class Crawler {
 
-    CrawlerDao dao = new DataAccessObject();
+    private CrawlerDao dao = new MyBatisCrawlerDao();
 
     public void run() throws SQLException, IOException {
-        Connection connection = DriverManager.getConnection("jdbc:h2:file:F:/read-write-files/news", "root", "root");
-        String link = null;
+//        Connection connection = DriverManager.getConnection("jdbc:h2:file:F:/read-write-files/news", "root", "root");
+        String link;
         while ((link = dao.getNextLinkThenDelete()) != null) {
             if (dao.isLinkProcessed(link)) {
                 continue;
@@ -39,8 +37,9 @@ public class Crawler {
                 parseUrlsFromPageAndInsertIntoDatabase(aTags);
 
                 // 判断是否是新闻页面
-                storeIntoDBIfItNewsPage(connection, document, link);
-                dao.updateDatabase(link, "insert into LINKS_ALREADY_PROCESSED (LINK) values (?)");
+                storeIntoDBIfItNewsPage(document, link);
+
+                dao.insertProcessedLink(link);
 
             }
         }
@@ -53,22 +52,18 @@ public class Crawler {
     private void parseUrlsFromPageAndInsertIntoDatabase(ArrayList<Element> aTags) throws SQLException {
         for (Element aTag : aTags) {
             String href = aTag.attr("href");
-
             if (href.startsWith("//")) {
                 href = "https:" + href;
             }
             System.out.println(href);
 
             if (!href.toLowerCase().startsWith("javascript")) {
-                dao.updateDatabase(href, "insert into LINKS_TO_BE_PROCESSED (link) values (?)");
-
+                dao.insertLinkToBeProcessed(href);
             }
-
         }
     }
 
-
-    private void storeIntoDBIfItNewsPage(Connection connection, Document document, String link) throws SQLException {
+    private void storeIntoDBIfItNewsPage( Document document, String link) throws SQLException {
         ArrayList<Element> articleTags = document.select("article");
         if (!articleTags.isEmpty()) {
             for (Element article : articleTags) {

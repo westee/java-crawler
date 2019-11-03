@@ -68,4 +68,14 @@ public class DataAccessObject implements CrawlerDao {
         }
         return false;
     }
+
+    @Override
+    public void insertProcessedLink(String link) {
+        
+    }
+
+    @Override
+    public void insertLinkToBeProcessed(String href) {
+
+    }
 }

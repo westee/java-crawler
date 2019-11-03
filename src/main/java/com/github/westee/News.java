@@ -10,6 +10,12 @@ public class News {
     private Date createdAt;
     private Date modifiedAt;
 
+    public News(String title, String content, String url) {
+        this.title = title;
+        this.content = content;
+        this.url = url;
+    }
+
     public Integer getId() {
         return id;
     }
